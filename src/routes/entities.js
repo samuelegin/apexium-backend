@@ -175,7 +175,18 @@ const taskSubRouter = buildEntityRouter('task_submissions', {
   },
 });
 const referralsRouter = buildEntityRouter('referrals');
-const usersRouter = buildEntityRouter('users');
+const usersRouter = buildEntityRouter('users', {
+  afterUpdate: async (db, id, data, req, existing) => {
+    if (data.wallet_address && data.wallet_address.trim() && data.wallet_address !== existing.wallet_address) {
+      await db.run(`
+        UPDATE jobs
+        SET jobber_wallet = ?
+        WHERE selected_applicant_email = ?
+          AND (jobber_wallet IS NULL OR jobber_wallet = '')
+      `, data.wallet_address.trim(), existing.email);
+    }
+  },
+});
 
 const xpLogsRouter = buildEntityRouter('xp_logs', {
   beforeCreate: async (db, data) => {
