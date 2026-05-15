@@ -201,8 +201,22 @@ const xpLogsRouter = buildEntityRouter('xp_logs', {
 });
 
 const uploadsRouter = express.Router();
-uploadsRouter.post('/', authMiddleware, (req, res) => {
-  res.json({ file_url: `https://cdn.apexium.app/uploads/${uuidv4()}` });
+uploadsRouter.post('/', authMiddleware, async (req, res) => {
+  // NOTE: this backend currently doesn't store files — it returns a CDN URL placeholder.
+  // We'll generate a file URL and also persist it as the user's avatar so uploads take effect immediately.
+  const fileUrl = `https://cdn.apexium.app/uploads/${uuidv4()}`;
+  try {
+    const db = getDb();
+    // Update user's avatar_url in DB if user id present in token
+    if (req.user && req.user.id) {
+      await db.run('UPDATE users SET avatar_url = ?, updated_date = ? WHERE id = ?', fileUrl, new Date().toISOString(), req.user.id);
+      const updated = await db.get('SELECT * FROM users WHERE id = ?', req.user.id);
+      return res.json({ file_url: fileUrl, user: updated });
+    }
+  } catch (err) {
+    console.error('[uploads] failed to persist avatar_url', err);
+  }
+  res.json({ file_url: fileUrl });
 });
 
 const aiRouter = express.Router();
