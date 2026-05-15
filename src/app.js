@@ -1,7 +1,9 @@
-const express = require('express');
-const cors = require('cors');
+const express    = require('express');
+const cors       = require('cors');
+const passport   = require('passport');
 const { initDb } = require('./database');
-const authRouter = require('./routes/auth');
+const authRouter       = require('./routes/auth');
+const googleAuthRouter = require('./routes/googleAuth');
 const {
   jobsRouter, kpisRouter, applicationsRouter, proofSubRouter,
   chatRouter, notifRouter, tasksRouter, taskSubRouter,
@@ -10,30 +12,31 @@ const {
 
 const app = express();
 
-app.use(cors({
-  origin: [
-    "http://localhost:5173",
-    "https://apexium-three.vercel.app"
-  ],
-  credentials: true
-}));
+const allowedOrigins = [
+  'http://localhost:5173',
+  process.env.FRONTEND_URL,
+].filter(Boolean);
+
+app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(passport.initialize());
 
-app.use('/api/auth', authRouter);
-app.use('/api/jobs', jobsRouter);
-app.use('/api/kpis', kpisRouter);
-app.use('/api/applications', applicationsRouter);
+app.use('/api/auth',              authRouter);
+app.use('/api/auth',              googleAuthRouter); // Google OAuth routes
+app.use('/api/jobs',              jobsRouter);
+app.use('/api/kpis',              kpisRouter);
+app.use('/api/applications',      applicationsRouter);
 app.use('/api/proof-submissions', proofSubRouter);
-app.use('/api/chat-messages', chatRouter);
-app.use('/api/notifications', notifRouter);
-app.use('/api/tasks', tasksRouter);
-app.use('/api/task-submissions', taskSubRouter);
-app.use('/api/xp-logs', xpLogsRouter);
-app.use('/api/referrals', referralsRouter);
-app.use('/api/users', usersRouter);
-app.use('/api/uploads', uploadsRouter);
-app.use('/api/ai', aiRouter);
+app.use('/api/chat-messages',     chatRouter);
+app.use('/api/notifications',     notifRouter);
+app.use('/api/tasks',             tasksRouter);
+app.use('/api/task-submissions',  taskSubRouter);
+app.use('/api/xp-logs',           xpLogsRouter);
+app.use('/api/referrals',         referralsRouter);
+app.use('/api/users',             usersRouter);
+app.use('/api/uploads',           uploadsRouter);
+app.use('/api/ai',                aiRouter);
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }));
 

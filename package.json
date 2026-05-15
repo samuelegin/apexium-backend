@@ -1,7 +1,7 @@
 {
   "name": "apexium-backend",
   "version": "1.0.0",
-  "description": "Apexium freelance marketplace API \u2014 Express + sql.js.",
+  "description": "Apexium freelance marketplace API — Express + sql.js.",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
@@ -19,8 +19,10 @@
     "express": "^4.18.3",
     "jsonwebtoken": "^9.0.2",
     "nodemailer": "^8.0.7",
+    "passport": "^0.7.0",
+    "passport-google-oauth20": "^2.0.0",
+    "resend": "^4.0.0",
     "sql.js": "^1.12.0",
-    "uuid": "^9.0.1",
-    "resend": "^4.0.0"
+    "uuid": "^9.0.1"
   }
 }

@@ -193,3 +193,4 @@ router.post('/forgot-password', (req, res) => {
 });
 
 module.exports = router;
+module.exports.makeToken = makeToken;
