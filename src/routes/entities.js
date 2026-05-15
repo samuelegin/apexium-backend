@@ -200,14 +200,34 @@ const xpLogsRouter = buildEntityRouter('xp_logs', {
   },
 });
 
+const path = require('path');
+const fs = require('fs');
+const multer = require('multer');
+
+const uploadDir = path.join(__dirname, '..', '..', 'uploads');
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: uploadDir,
+  filename: (req, file, cb) => {
+    const id = uuidv4();
+    const ext = path.extname(file.originalname) || '';
+    cb(null, `${id}${ext}`);
+  },
+});
+const upload = multer({ storage });
+
 const uploadsRouter = express.Router();
-uploadsRouter.post('/', authMiddleware, async (req, res) => {
-  // NOTE: this backend currently doesn't store files — it returns a CDN URL placeholder.
-  // We'll generate a file URL and also persist it as the user's avatar so uploads take effect immediately.
-  const fileUrl = `https://cdn.apexium.app/uploads/${uuidv4()}`;
+uploadsRouter.post('/', authMiddleware, upload.single('file'), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ message: 'No file uploaded' });
+  }
+
+  const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
   try {
     const db = getDb();
-    // Update user's avatar_url in DB if user id present in token
     if (req.user && req.user.id) {
       await db.run('UPDATE users SET avatar_url = ?, updated_date = ? WHERE id = ?', fileUrl, new Date().toISOString(), req.user.id);
       const updated = await db.get('SELECT * FROM users WHERE id = ?', req.user.id);
@@ -216,6 +236,7 @@ uploadsRouter.post('/', authMiddleware, async (req, res) => {
   } catch (err) {
     console.error('[uploads] failed to persist avatar_url', err);
   }
+
   res.json({ file_url: fileUrl });
 });
 

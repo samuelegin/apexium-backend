@@ -1,6 +1,8 @@
 const express    = require('express');
 const cors       = require('cors');
 const passport   = require('passport');
+const path       = require('path');
+const fs         = require('fs');
 const { initDb } = require('./database');
 const authRouter       = require('./routes/auth');
 const googleAuthRouter = require('./routes/googleAuth');
@@ -21,6 +23,12 @@ app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(passport.initialize());
+
+const uploadsDir = path.join(__dirname, '..', 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+app.use('/uploads', express.static(uploadsDir));
 
 app.use('/api/auth',              authRouter);
 app.use('/api/auth',              googleAuthRouter); // Google OAuth routes
