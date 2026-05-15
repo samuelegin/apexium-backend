@@ -1,7 +1,7 @@
 {
   "name": "apexium-backend",
   "version": "1.0.0",
-  "description": "Apexium freelance marketplace API — Express + sql.js (no native compilation needed)",
+  "description": "Apexium freelance marketplace API \u2014 Express + sql.js.",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
@@ -20,6 +20,7 @@
     "jsonwebtoken": "^9.0.2",
     "nodemailer": "^8.0.7",
     "sql.js": "^1.12.0",
-    "uuid": "^9.0.1"
+    "uuid": "^9.0.1",
+    "resend": "^4.0.0"
   }
 }
