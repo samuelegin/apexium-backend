@@ -42,7 +42,10 @@ function verifyTelegramAuth(data, botToken) {
 }
 
 async function handleTelegramCallback(req, res) {
-  const payload = Object.keys(req.body || {}).length ? req.body : req.query || {};
+  const origin = req.body?.origin || req.query?.origin;
+  const payload = Object.keys(req.body || {}).length ? { ...req.body } : { ...req.query };
+  delete payload.origin;
+
   if (!payload || !payload.hash) return res.status(400).send('Missing Telegram payload');
   if (!TELEGRAM_BOT_TOKEN) return res.status(500).send('Server misconfigured (missing bot token)');
 
@@ -79,7 +82,7 @@ async function handleTelegramCallback(req, res) {
     }
 
     const token = makeToken(user);
-    const redirectOrigin = req.query.origin || req.body.origin || FRONTEND_URL;
+    const redirectOrigin = origin || FRONTEND_URL;
     const redirectTarget = `${redirectOrigin.replace(/\/$/, '')}/auth/callback?token=${encodeURIComponent(token)}`;
     return res.redirect(redirectTarget);
   } catch (err) {
