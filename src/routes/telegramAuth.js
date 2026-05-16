@@ -62,8 +62,9 @@ async function handleTelegramCallback(req, res) {
     }
 
     const token = makeToken(user);
-    // Redirect back to frontend auth callback with token
-    return res.redirect(`${FRONTEND_URL}/auth/callback?token=${encodeURIComponent(token)}`);
+    const redirectOrigin = req.query.origin || req.body.origin || FRONTEND_URL;
+    const redirectTarget = `${redirectOrigin.replace(/\/$/, '')}/auth/callback?token=${encodeURIComponent(token)}`;
+    return res.redirect(redirectTarget);
   } catch (err) {
     console.error('[telegramAuth] error', err);
     return res.status(500).send('Telegram auth processing failed');
@@ -73,7 +74,9 @@ async function handleTelegramCallback(req, res) {
 // Serve a small page with the Telegram widget so users can authenticate via the bot
 router.get('/telegram', (req, res) => {
   const botUser = TELEGRAM_BOT_USERNAME || '@your_bot_username';
-  const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="display:flex;align-items:center;justify-content:center;height:100vh">\n<script async src="https://telegram.org/js/telegram-widget.js?19" data-telegram-login="${botUser}" data-size="large" data-userpic="false" data-auth-url="${BACKEND_URL}/api/auth/telegram/callback" data-request-access="write"></script>\n</body></html>`;
+  const origin = req.query.origin || FRONTEND_URL;
+  const callbackUrl = `${BACKEND_URL}/api/auth/telegram/callback?origin=${encodeURIComponent(origin)}`;
+  const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="display:flex;align-items:center;justify-content:center;height:100vh">\n<script async src="https://telegram.org/js/telegram-widget.js?19" data-telegram-login="${botUser}" data-size="large" data-userpic="false" data-auth-url="${callbackUrl}" data-request-access="write"></script>\n</body></html>`;
   res.send(html);
 });
 
