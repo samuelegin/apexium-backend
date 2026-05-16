@@ -63,6 +63,8 @@ async function initTursoDb() {
   try { await db.run("ALTER TABLE users ADD COLUMN cv_url TEXT DEFAULT ''"); } catch (_) {}
   try { await db.run("ALTER TABLE users ADD COLUMN selected_mode TEXT DEFAULT 'jobber'"); } catch (_) {}
   try { await db.run("ALTER TABLE users ADD COLUMN mode_confirmed INTEGER DEFAULT 0"); } catch (_) {}
+  try { await db.run("ALTER TABLE users ADD COLUMN telegram_id TEXT DEFAULT ''"); } catch (_) {}
+  try { await db.run("ALTER TABLE users ADD COLUMN telegram_username TEXT DEFAULT ''"); } catch (_) {}
 }
 
 function save() {
@@ -184,6 +186,8 @@ function createSchema() {
       cv_url TEXT DEFAULT '',
       selected_mode TEXT DEFAULT 'jobber',
       mode_confirmed INTEGER DEFAULT 0,
+      telegram_id TEXT DEFAULT '',
+      telegram_username TEXT DEFAULT '',
       created_date TEXT DEFAULT (datetime('now')),
       updated_date TEXT DEFAULT (datetime('now'))
     );
