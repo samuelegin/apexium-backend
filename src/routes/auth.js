@@ -165,6 +165,7 @@ router.post('/login', async (req, res) => {
 router.post('/logout', authMiddleware, (req, res) => res.status(204).end());
 
 router.get('/me', authMiddleware, async (req, res) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   const user = await getDb().get('SELECT * FROM users WHERE id = ?', req.user.id);
   if (!user) return res.status(404).json({ message: 'Not found' });
   res.json(sanitizeUser(user));
