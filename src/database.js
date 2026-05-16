@@ -41,6 +41,8 @@ function loadOrCreate() {
   try { db.run("ALTER TABLE users ADD COLUMN cv_url TEXT DEFAULT ''"); } catch (_) {}
   try { db.run("ALTER TABLE users ADD COLUMN selected_mode TEXT DEFAULT 'jobber'"); } catch (_) {}
   try { db.run("ALTER TABLE users ADD COLUMN mode_confirmed INTEGER DEFAULT 0"); } catch (_) {}
+  try { db.run("ALTER TABLE users ADD COLUMN telegram_id TEXT DEFAULT ''"); } catch (_) {}
+  try { db.run("ALTER TABLE users ADD COLUMN telegram_username TEXT DEFAULT ''"); } catch (_) {}
   try { db.run("ALTER TABLE email_verifications ADD COLUMN username TEXT DEFAULT ''"); } catch (_) {}
   try { db.run("ALTER TABLE email_verifications ADD COLUMN referrer_email TEXT DEFAULT NULL"); } catch (_) {}
   try { db.run("ALTER TABLE jobs ADD COLUMN description TEXT DEFAULT ''"); } catch (_) {}
