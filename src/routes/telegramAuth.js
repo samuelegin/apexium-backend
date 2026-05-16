@@ -21,7 +21,17 @@ function verifyTelegramAuth(data, botToken) {
   const dataCheckString = dataCheckArr.join('\n');
   const secret = crypto.createHash('sha256').update(botToken).digest();
   const hmac = crypto.createHmac('sha256', secret).update(dataCheckString).digest('hex');
-  return hmac === hash;
+  const isValid = hmac === hash;
+
+  if (!isValid) {
+    console.error('[telegramAuth] invalid Telegram auth payload', {
+      dataCheckString,
+      expectedHmac: hmac,
+      receivedHash: hash,
+    });
+  }
+
+  return isValid;
 }
 
 async function handleTelegramCallback(req, res) {
