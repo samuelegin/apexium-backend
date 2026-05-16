@@ -11,6 +11,13 @@ const TELEGRAM_BOT_USERNAME = process.env.TELEGRAM_BOT_USERNAME;
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3000';
 
+console.log('[telegramAuth] config', {
+  TELEGRAM_BOT_USERNAME,
+  FRONTEND_URL,
+  BACKEND_URL,
+  hasBotToken: Boolean(TELEGRAM_BOT_TOKEN),
+});
+
 function verifyTelegramAuth(data, botToken) {
   const hash = data.hash;
   const checkObj = Object.assign({}, data);
@@ -86,6 +93,7 @@ router.get('/telegram', (req, res) => {
   const botUser = TELEGRAM_BOT_USERNAME || '@your_bot_username';
   const origin = req.query.origin || FRONTEND_URL;
   const callbackUrl = `${BACKEND_URL}/api/auth/telegram/callback?origin=${encodeURIComponent(origin)}`;
+  console.log('[telegramAuth] serving widget', { botUser, origin, callbackUrl });
   const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="display:flex;align-items:center;justify-content:center;height:100vh">\n<script async src="https://telegram.org/js/telegram-widget.js?19" data-telegram-login="${botUser}" data-size="large" data-userpic="false" data-auth-url="${callbackUrl}" data-request-access="write"></script>\n</body></html>`;
   res.send(html);
 });
