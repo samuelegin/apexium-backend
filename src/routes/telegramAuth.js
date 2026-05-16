@@ -43,8 +43,10 @@ function verifyTelegramAuth(data, botToken) {
 
 async function handleTelegramCallback(req, res) {
   const origin = req.body?.origin || req.query?.origin;
+  const callbackType = req.body?.callback_type || req.query?.callback_type;
   const payload = Object.keys(req.body || {}).length ? { ...req.body } : { ...req.query };
   delete payload.origin;
+  delete payload.callback_type;
 
   if (!payload || !payload.hash) return res.status(400).send('Missing Telegram payload');
   if (!TELEGRAM_BOT_TOKEN) return res.status(500).send('Server misconfigured (missing bot token)');
@@ -81,8 +83,16 @@ async function handleTelegramCallback(req, res) {
       user = await db.get('SELECT * FROM users WHERE id = ?', user.id);
     }
 
-    const token = makeToken(user);
     const redirectOrigin = origin || FRONTEND_URL;
+
+    // Profile connection mode: return params instead of token for existing logged-in users
+    if (callbackType === 'profile') {
+      const redirectTarget = `${redirectOrigin.replace(/\/$/, '')}/auth/callback?telegram_id=${encodeURIComponent(telegramId)}&telegram_username=${encodeURIComponent(telegramUsername)}`;
+      return res.redirect(redirectTarget);
+    }
+
+    // Standard login mode: return JWT token
+    const token = makeToken(user);
     const redirectTarget = `${redirectOrigin.replace(/\/$/, '')}/auth/callback?token=${encodeURIComponent(token)}`;
     return res.redirect(redirectTarget);
   } catch (err) {
@@ -95,8 +105,9 @@ async function handleTelegramCallback(req, res) {
 router.get('/telegram', (req, res) => {
   const botUser = TELEGRAM_BOT_USERNAME || '@your_bot_username';
   const origin = req.query.origin || FRONTEND_URL;
-  const callbackUrl = `${BACKEND_URL}/api/auth/telegram/callback?origin=${encodeURIComponent(origin)}`;
-  console.log('[telegramAuth] serving widget', { botUser, origin, callbackUrl });
+  const callbackType = req.query.callback_type || '';
+  const callbackUrl = `${BACKEND_URL}/api/auth/telegram/callback?origin=${encodeURIComponent(origin)}${callbackType ? `&callback_type=${encodeURIComponent(callbackType)}` : ''}`;
+  console.log('[telegramAuth] serving widget', { botUser, origin, callbackType, callbackUrl });
   const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="display:flex;align-items:center;justify-content:center;height:100vh">\n<script async src="https://telegram.org/js/telegram-widget.js?19" data-telegram-login="${botUser}" data-size="large" data-userpic="false" data-auth-url="${callbackUrl}" data-request-access="write"></script>\n</body></html>`;
   res.send(html);
 });
