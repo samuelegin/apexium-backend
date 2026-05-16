@@ -38,6 +38,9 @@ function loadOrCreate() {
   }
   createSchema();
   try { db.run("ALTER TABLE users ADD COLUMN wallet_address TEXT DEFAULT ''"); } catch (_) {}
+  try { db.run("ALTER TABLE users ADD COLUMN cv_url TEXT DEFAULT ''"); } catch (_) {}
+  try { db.run("ALTER TABLE users ADD COLUMN selected_mode TEXT DEFAULT 'jobber'"); } catch (_) {}
+  try { db.run("ALTER TABLE users ADD COLUMN mode_confirmed INTEGER DEFAULT 0"); } catch (_) {}
   try { db.run("ALTER TABLE email_verifications ADD COLUMN username TEXT DEFAULT ''"); } catch (_) {}
   try { db.run("ALTER TABLE email_verifications ADD COLUMN referrer_email TEXT DEFAULT NULL"); } catch (_) {}
   try { db.run("ALTER TABLE jobs ADD COLUMN description TEXT DEFAULT ''"); } catch (_) {}
@@ -54,6 +57,10 @@ async function initTursoDb() {
   });
   usingTurso = true;
   await createSchema();
+  try { await db.run("ALTER TABLE users ADD COLUMN wallet_address TEXT DEFAULT ''"); } catch (_) {}
+  try { await db.run("ALTER TABLE users ADD COLUMN cv_url TEXT DEFAULT ''"); } catch (_) {}
+  try { await db.run("ALTER TABLE users ADD COLUMN selected_mode TEXT DEFAULT 'jobber'"); } catch (_) {}
+  try { await db.run("ALTER TABLE users ADD COLUMN mode_confirmed INTEGER DEFAULT 0"); } catch (_) {}
 }
 
 function save() {
@@ -172,6 +179,9 @@ function createSchema() {
       referral_code TEXT DEFAULT '',
       top_categories TEXT DEFAULT '[]',
       wallet_address TEXT DEFAULT '',
+      cv_url TEXT DEFAULT '',
+      selected_mode TEXT DEFAULT 'jobber',
+      mode_confirmed INTEGER DEFAULT 0,
       created_date TEXT DEFAULT (datetime('now')),
       updated_date TEXT DEFAULT (datetime('now'))
     );
