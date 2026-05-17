@@ -188,6 +188,7 @@ function createSchema() {
       mode_confirmed INTEGER DEFAULT 0,
       telegram_id TEXT DEFAULT '',
       telegram_username TEXT DEFAULT '',
+      last_application_ts INTEGER DEFAULT 0,
       created_date TEXT DEFAULT (datetime('now')),
       updated_date TEXT DEFAULT (datetime('now'))
     );

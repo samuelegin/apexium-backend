@@ -173,7 +173,7 @@ router.get('/me', authMiddleware, async (req, res) => {
 
 router.patch('/me', authMiddleware, async (req, res) => {
   const db = getDb();
-  const allowed = ['full_name', 'username', 'bio', 'avatar_url', 'x_handle', 'top_categories', 'wallet_address', 'last_login_date', 'cv_url', 'selected_mode', 'mode_confirmed'];
+  const allowed = ['full_name', 'username', 'bio', 'avatar_url', 'x_handle', 'top_categories', 'wallet_address', 'last_login_date', 'cv_url', 'selected_mode', 'mode_confirmed', 'telegram_id', 'telegram_username'];
   const updates = {};
   for (const key of allowed) {
     if (req.body[key] !== undefined) {
