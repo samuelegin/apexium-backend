@@ -7,6 +7,7 @@ const { initDb } = require('./database');
 const authRouter       = require('./routes/auth');
 const googleAuthRouter = require('./routes/googleAuth');
 const telegramAuthRouter = require('./routes/telegramAuth');
+const discordAuthRouter = require('./routes/discordAuth');
 const {
   jobsRouter, kpisRouter, applicationsRouter, proofSubRouter,
   chatRouter, notifRouter, tasksRouter, taskSubRouter,
@@ -35,6 +36,7 @@ app.use('/uploads', express.static(uploadsDir));
 app.use('/api/auth',              authRouter);
 app.use('/api/auth',              googleAuthRouter); // Google OAuth routes
 app.use('/api/auth',              telegramAuthRouter); // Telegram login widget routes
+app.use('/api/auth',              discordAuthRouter); // Discord OAuth routes
 app.use('/api/jobs',              jobsRouter);
 app.use('/api/kpis',              kpisRouter);
 app.use('/api/applications',      applicationsRouter);

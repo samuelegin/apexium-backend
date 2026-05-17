@@ -43,6 +43,8 @@ function loadOrCreate() {
   try { db.run("ALTER TABLE users ADD COLUMN mode_confirmed INTEGER DEFAULT 0"); } catch (_) {}
   try { db.run("ALTER TABLE users ADD COLUMN telegram_id TEXT DEFAULT ''"); } catch (_) {}
   try { db.run("ALTER TABLE users ADD COLUMN telegram_username TEXT DEFAULT ''"); } catch (_) {}
+  try { db.run("ALTER TABLE users ADD COLUMN discord_id TEXT DEFAULT ''"); } catch (_) {}
+  try { db.run("ALTER TABLE users ADD COLUMN discord_username TEXT DEFAULT ''"); } catch (_) {}
   try { db.run("ALTER TABLE email_verifications ADD COLUMN username TEXT DEFAULT ''"); } catch (_) {}
   try { db.run("ALTER TABLE email_verifications ADD COLUMN referrer_email TEXT DEFAULT NULL"); } catch (_) {}
   try { db.run("ALTER TABLE jobs ADD COLUMN description TEXT DEFAULT ''"); } catch (_) {}
@@ -65,6 +67,8 @@ async function initTursoDb() {
   try { await db.run("ALTER TABLE users ADD COLUMN mode_confirmed INTEGER DEFAULT 0"); } catch (_) {}
   try { await db.run("ALTER TABLE users ADD COLUMN telegram_id TEXT DEFAULT ''"); } catch (_) {}
   try { await db.run("ALTER TABLE users ADD COLUMN telegram_username TEXT DEFAULT ''"); } catch (_) {}
+  try { await db.run("ALTER TABLE users ADD COLUMN discord_id TEXT DEFAULT ''"); } catch (_) {}
+  try { await db.run("ALTER TABLE users ADD COLUMN discord_username TEXT DEFAULT ''"); } catch (_) {}
 }
 
 function save() {
@@ -188,6 +192,8 @@ function createSchema() {
       mode_confirmed INTEGER DEFAULT 0,
       telegram_id TEXT DEFAULT '',
       telegram_username TEXT DEFAULT '',
+      discord_id TEXT DEFAULT '',
+      discord_username TEXT DEFAULT '',
       last_application_ts INTEGER DEFAULT 0,
       created_date TEXT DEFAULT (datetime('now')),
       updated_date TEXT DEFAULT (datetime('now'))
