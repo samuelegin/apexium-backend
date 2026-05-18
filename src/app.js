@@ -5,10 +5,10 @@ const passport   = require('passport');
 const path       = require('path');
 const fs         = require('fs');
 const { initDb } = require('./database');
-const authRouter       = require('./routes/auth');
-const googleAuthRouter = require('./routes/googleAuth');
+const authRouter         = require('./routes/auth');
+const googleAuthRouter   = require('./routes/googleAuth');
 const telegramAuthRouter = require('./routes/telegramAuth');
-const discordAuthRouter = require('./routes/discordAuth');
+const discordAuthRouter  = require('./routes/discordAuth');
 const {
   jobsRouter, kpisRouter, applicationsRouter, proofSubRouter,
   chatRouter, notifRouter, tasksRouter, taskSubRouter,
@@ -42,7 +42,7 @@ app.use(helmet({
       frameAncestors: ["'none'"],
     },
   },
-  crossOriginEmbedderPolicy: false, // Required for WalletConnect
+  crossOriginEmbedderPolicy: false,
 }));
 
 const allowedOrigins = [
@@ -61,24 +61,36 @@ if (!fs.existsSync(uploadsDir)) {
 }
 app.use('/uploads', express.static(uploadsDir));
 
-/* ── Routes with targeted rate limits ──────────────────────────────────────── */
-app.use('/api/auth',              authLimiter,        authRouter);
-app.use('/api/auth',              authLimiter,        googleAuthRouter);
-app.use('/api/auth',              authLimiter,        telegramAuthRouter);
-app.use('/api/auth',              authLimiter,        discordAuthRouter);
-app.use('/api/jobs',              jobPostLimiter,     jobsRouter);
-app.use('/api/kpis',              generalLimiter,     kpisRouter);
-app.use('/api/applications',      applicationLimiter, applicationsRouter);
-app.use('/api/proof-submissions', proofLimiter,       proofSubRouter);
-app.use('/api/chat-messages',     generalLimiter,     chatRouter);
-app.use('/api/notifications',     generalLimiter,     notifRouter);
-app.use('/api/tasks',             generalLimiter,     tasksRouter);
-app.use('/api/task-submissions',  applicationLimiter, taskSubRouter);
-app.use('/api/xp-logs',           generalLimiter,     xpLogsRouter);
-app.use('/api/referrals',         generalLimiter,     referralsRouter);
-app.use('/api/users',             generalLimiter,     usersRouter);
-app.use('/api/uploads',           uploadLimiter,      uploadsRouter);
-app.use('/api/ai',                aiLimiter,          aiRouter);
+/* ── Write-only rate limiter middleware ─────────────────────────────────────── */
+// Applies a limiter ONLY on mutating methods (POST, PATCH, PUT, DELETE)
+// GET requests are never rate-limited so reads always work
+function writeOnly(limiter) {
+  return (req, res, next) => {
+    if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+    return limiter(req, res, next);
+  };
+}
+
+/* ── Auth ───────────────────────────────────────────────────────────────────── */
+app.use('/api/auth', authLimiter,        authRouter);
+app.use('/api/auth', authLimiter,        googleAuthRouter);
+app.use('/api/auth', authLimiter,        telegramAuthRouter);
+app.use('/api/auth', authLimiter,        discordAuthRouter);
+
+/* ── Entity routes — writes rate limited, reads always free ─────────────────── */
+app.use('/api/jobs',              writeOnly(jobPostLimiter),     jobsRouter);
+app.use('/api/kpis',              writeOnly(generalLimiter),     kpisRouter);
+app.use('/api/applications',      writeOnly(applicationLimiter), applicationsRouter);
+app.use('/api/proof-submissions', writeOnly(proofLimiter),       proofSubRouter);
+app.use('/api/chat-messages',     writeOnly(generalLimiter),     chatRouter);
+app.use('/api/notifications',     writeOnly(generalLimiter),     notifRouter);
+app.use('/api/tasks',             writeOnly(generalLimiter),     tasksRouter);
+app.use('/api/task-submissions',  writeOnly(applicationLimiter), taskSubRouter);
+app.use('/api/xp-logs',           writeOnly(generalLimiter),     xpLogsRouter);
+app.use('/api/referrals',         writeOnly(generalLimiter),     referralsRouter);
+app.use('/api/users',             writeOnly(generalLimiter),     usersRouter);
+app.use('/api/uploads',           writeOnly(uploadLimiter),      uploadsRouter);
+app.use('/api/ai',                aiLimiter,                     aiRouter); // AI always limited
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }));
 
