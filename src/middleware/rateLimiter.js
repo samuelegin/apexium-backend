@@ -14,11 +14,11 @@ function limiter({ windowMinutes, max, message }) {
 }
 
 /* ── Auth ───────────────────────────────────────────────────────────────────── */
-// 20 login/OAuth attempts per 15 min per IP
+// 20 login/OAuth attempts per 5 min per IP
 const authLimiter = limiter({
-  windowMinutes: 15,
+  windowMinutes: 5,
   max:           20,
-  message:       'Too many auth attempts. Please wait 15 minutes.',
+  message:       'Too many auth attempts. Please wait 5 minutes.',
 });
 
 /* ── Job posting ────────────────────────────────────────────────────────────── */
