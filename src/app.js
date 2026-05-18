@@ -14,6 +14,16 @@ const {
   xpLogsRouter, referralsRouter, usersRouter, uploadsRouter, aiRouter,
 } = require('./routes/entities');
 
+const {
+  authLimiter,
+  jobPostLimiter,
+  applicationLimiter,
+  proofLimiter,
+  uploadLimiter,
+  aiLimiter,
+  generalLimiter,
+} = require('./middleware/rateLimiter');
+
 const app = express();
 app.set('trust proxy', 1);
 
@@ -33,23 +43,24 @@ if (!fs.existsSync(uploadsDir)) {
 }
 app.use('/uploads', express.static(uploadsDir));
 
-app.use('/api/auth',              authRouter);
-app.use('/api/auth',              googleAuthRouter); // Google OAuth routes
-app.use('/api/auth',              telegramAuthRouter); // Telegram login widget routes
-app.use('/api/auth',              discordAuthRouter); // Discord OAuth routes
-app.use('/api/jobs',              jobsRouter);
-app.use('/api/kpis',              kpisRouter);
-app.use('/api/applications',      applicationsRouter);
-app.use('/api/proof-submissions', proofSubRouter);
-app.use('/api/chat-messages',     chatRouter);
-app.use('/api/notifications',     notifRouter);
-app.use('/api/tasks',             tasksRouter);
-app.use('/api/task-submissions',  taskSubRouter);
-app.use('/api/xp-logs',           xpLogsRouter);
-app.use('/api/referrals',         referralsRouter);
-app.use('/api/users',             usersRouter);
-app.use('/api/uploads',           uploadsRouter);
-app.use('/api/ai',                aiRouter);
+/* ── Routes with targeted rate limits ──────────────────────────────────────── */
+app.use('/api/auth',              authLimiter,        authRouter);
+app.use('/api/auth',              authLimiter,        googleAuthRouter);
+app.use('/api/auth',              authLimiter,        telegramAuthRouter);
+app.use('/api/auth',              authLimiter,        discordAuthRouter);
+app.use('/api/jobs',              jobPostLimiter,     jobsRouter);
+app.use('/api/kpis',              generalLimiter,     kpisRouter);
+app.use('/api/applications',      applicationLimiter, applicationsRouter);
+app.use('/api/proof-submissions', proofLimiter,       proofSubRouter);
+app.use('/api/chat-messages',     generalLimiter,     chatRouter);
+app.use('/api/notifications',     generalLimiter,     notifRouter);
+app.use('/api/tasks',             generalLimiter,     tasksRouter);
+app.use('/api/task-submissions',  applicationLimiter, taskSubRouter);
+app.use('/api/xp-logs',           generalLimiter,     xpLogsRouter);
+app.use('/api/referrals',         generalLimiter,     referralsRouter);
+app.use('/api/users',             generalLimiter,     usersRouter);
+app.use('/api/uploads',           uploadLimiter,      uploadsRouter);
+app.use('/api/ai',                aiLimiter,          aiRouter);
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }));
 
