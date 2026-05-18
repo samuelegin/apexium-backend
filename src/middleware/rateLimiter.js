@@ -22,9 +22,9 @@ const authLimiter = limiter({
 });
 
 /* ── Job posting ────────────────────────────────────────────────────────────── */
-// 10 job posts per hour per IP — prevents spam posting
+// 10 job posts per 30 min per IP — prevents spam posting
 const jobPostLimiter = limiter({
-  windowMinutes: 60,
+  windowMinutes: 30,
   max:           10,
   message:       'Too many jobs posted. Please wait before posting again.',
 });
