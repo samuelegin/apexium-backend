@@ -1,5 +1,6 @@
 const express    = require('express');
 const cors       = require('cors');
+const helmet     = require('helmet');
 const passport   = require('passport');
 const path       = require('path');
 const fs         = require('fs');
@@ -26,6 +27,23 @@ const {
 
 const app = express();
 app.set('trust proxy', 1);
+
+/* ── Security headers ───────────────────────────────────────────────────────── */
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc:     ["'self'"],
+      scriptSrc:      ["'self'", "'unsafe-inline'", 'https://cdn.jsdelivr.net'],
+      styleSrc:       ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+      fontSrc:        ["'self'", 'https://fonts.gstatic.com'],
+      imgSrc:         ["'self'", 'data:', 'https:', 'blob:'],
+      connectSrc:     ["'self'", 'https:', 'wss:'],
+      frameSrc:       ["'self'", 'https://verify.walletconnect.com', 'https://verify.walletconnect.org'],
+      frameAncestors: ["'none'"],
+    },
+  },
+  crossOriginEmbedderPolicy: false, // Required for WalletConnect
+}));
 
 const allowedOrigins = [
   'http://localhost:5173',
