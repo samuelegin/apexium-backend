@@ -165,13 +165,18 @@ router.post('/login', async (req, res) => {
 router.post('/logout', authMiddleware, (req, res) => res.status(204).end());
 
 router.get('/me', authMiddleware, async (req, res) => {
-  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
   const user = await getDb().get('SELECT * FROM users WHERE id = ?', req.user.id);
   if (!user) return res.status(404).json({ message: 'Not found' });
   res.json(sanitizeUser(user));
 });
 
 router.patch('/me', authMiddleware, async (req, res) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
   const db = getDb();
   const allowed = ['full_name', 'username', 'bio', 'avatar_url', 'x_handle', 'top_categories', 'wallet_address', 'last_login_date', 'cv_url', 'selected_mode', 'mode_confirmed', 'telegram_id', 'telegram_username', 'discord_id', 'discord_username'];
   const updates = {};

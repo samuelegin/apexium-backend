@@ -51,6 +51,11 @@ async function handleTelegramCallback(req, res) {
   delete payload.callback_type;
   delete payload.user_id;
 
+  // Set cache-busting headers on all callback responses
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+
   if (!payload || !payload.hash) return res.status(400).send('Missing Telegram payload');
   if (!TELEGRAM_BOT_TOKEN) return res.status(500).send('Server misconfigured (missing bot token)');
 
@@ -118,6 +123,9 @@ async function handleTelegramCallback(req, res) {
 
 router.post('/telegram/disconnect', authMiddleware, async (req, res) => {
   try {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
     const db = getDb();
     const now = new Date().toISOString();
     await db.run('UPDATE users SET telegram_id = ?, telegram_username = ?, updated_date = ? WHERE id = ?', '', '', now, req.user.id);
