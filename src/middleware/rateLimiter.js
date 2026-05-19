@@ -1,5 +1,8 @@
 const rateLimit = require('express-rate-limit');
 
+// Use express-rate-limit's IPv6-safe helper when available
+const ipKeyGenerator = (rateLimit && rateLimit.ipKeyGenerator) ? rateLimit.ipKeyGenerator : (req) => req.ip;
+
 /* ── Helper ─────────────────────────────────────────────────────────────────── */
 function limiter({ windowMinutes, max, message }) {
   return rateLimit({
@@ -8,8 +11,8 @@ function limiter({ windowMinutes, max, message }) {
     standardHeaders: true,   // Return rate limit info in RateLimit-* headers
     legacyHeaders:   false,
     message:         { message },
-    // Trust Railway's proxy so IP is read correctly
-    keyGenerator:    (req) => req.ip,
+    // Use IPv6-safe key generator helper to avoid IPv6 bypass issues
+    keyGenerator:    (req) => ipKeyGenerator(req),
   });
 }
 
