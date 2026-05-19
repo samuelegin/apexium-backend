@@ -38,7 +38,7 @@ app.use(helmet({
       fontSrc:        ["'self'", 'https://fonts.gstatic.com'],
       imgSrc:         ["'self'", 'data:', 'https:', 'blob:'],
       connectSrc:     ["'self'", 'https:', 'wss:'],
-      frameSrc:       ["'self'", 'https://verify.walletconnect.com', 'https://verify.walletconnect.org'],
+      frameSrc:       ["'self'", 'https://verify.walletconnect.com', 'https://verify.walletconnect.org', 'https://oauth.telegram.org'],
       frameAncestors: ["'none'"],
     },
   },
