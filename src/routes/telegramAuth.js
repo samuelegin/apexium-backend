@@ -2,6 +2,7 @@ const express = require('express');
 const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const { getDb } = require('../database');
+const { authMiddleware } = require('../middleware/auth');
 const { makeToken, sanitizeUser } = require('./authHelpers');
 
 const router = express.Router();
@@ -68,6 +69,16 @@ async function handleTelegramCallback(req, res) {
 
     // Profile connection mode: update specific existing user
     if (callbackType === 'profile' && userIdParam) {
+      const targetUser = await db.get('SELECT * FROM users WHERE id = ?', userIdParam);
+      if (!targetUser) {
+        return res.status(404).send('Target user not found');
+      }
+
+      const existingOwner = await db.get('SELECT id FROM users WHERE telegram_id = ?', telegramId);
+      if (existingOwner && existingOwner.id !== userIdParam) {
+        return res.status(409).send('Telegram account is already linked to another user');
+      }
+
       await db.run('UPDATE users SET telegram_id = ?, telegram_username = ?, updated_date = ? WHERE id = ?', 
         telegramId, telegramUsername, now, userIdParam);
       const redirectTarget = `${redirectOrigin.replace(/\/$/, '')}/auth/callback?telegram_id=${encodeURIComponent(telegramId)}&telegram_username=${encodeURIComponent(telegramUsername)}`;
@@ -75,7 +86,7 @@ async function handleTelegramCallback(req, res) {
     }
 
     // Standard login/registration mode
-    let user = await db.get('SELECT * FROM users WHERE telegram_id = ? OR telegram_username = ?', telegramId, telegramUsername);
+    let user = await db.get('SELECT * FROM users WHERE telegram_id = ?', telegramId);
 
     if (!user) {
       // Create a user placeholder. Telegram does not provide email, so use synthetic email.
@@ -104,6 +115,18 @@ async function handleTelegramCallback(req, res) {
     return res.status(500).send('Telegram auth processing failed');
   }
 }
+
+router.post('/telegram/disconnect', authMiddleware, async (req, res) => {
+  try {
+    const db = getDb();
+    const now = new Date().toISOString();
+    await db.run('UPDATE users SET telegram_id = ?, telegram_username = ?, updated_date = ? WHERE id = ?', '', '', now, req.user.id);
+    return res.json({ message: 'Telegram disconnected' });
+  } catch (err) {
+    console.error('[telegramAuth] disconnect error', err);
+    return res.status(500).json({ message: 'Failed to disconnect Telegram' });
+  }
+});
 
 // Serve a small page with the Telegram widget so users can authenticate via the bot
 router.get('/telegram', (req, res) => {
