@@ -78,7 +78,7 @@ const jobsCrud = buildEntityRouter('jobs', {
     }
 
     if (data.status === 'completed' && existing.status !== 'completed') {
-      data.escrow_release_pending = 1;
+      data.escrow_release_pending = true;
       await recalcJobberPiScore(db, { ...existing, ...data, id });
     }
   },
@@ -94,14 +94,14 @@ const jobsCrud = buildEntityRouter('jobs', {
 const jobsRouter = express.Router();
 
 jobsRouter.get('/pending-release', authMiddleware, async (req, res) => {
-  const rows = await getDb().all(`SELECT * FROM jobs WHERE escrow_release_pending = 1 AND escrow_released = 0 ORDER BY updated_date DESC`);
+  const rows = await getDb().all(`SELECT * FROM jobs WHERE escrow_release_pending = TRUE AND escrow_released = FALSE ORDER BY updated_date DESC`);
   res.json(rows.map(deserializeJob));
 });
 
 jobsRouter.get('/', authMiddleware, async (req, res) => {
   const db = getDb();
   const { _sort, _limit, ...filters } = req.query;
-  let sql = `SELECT * FROM jobs WHERE escrow_funded = 1`;
+  let sql = `SELECT * FROM jobs WHERE escrow_funded = TRUE`;
   const params = [];
   for (const [k, v] of Object.entries(filters)) {
     sql += ` AND \`${k}\` = ?`;

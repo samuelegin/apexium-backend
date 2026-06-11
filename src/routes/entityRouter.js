@@ -39,7 +39,7 @@ function serialize(table, data) {
     if (out[c] !== undefined) out[c] = JSON.stringify(out[c]);
   }
   for (const c of (BOOL_COLS[table] || [])) {
-    if (out[c] !== undefined) out[c] = out[c] ? 1 : 0;
+    if (out[c] !== undefined) out[c] = Boolean(out[c]) ? true : false;
   }
   return out;
 }
