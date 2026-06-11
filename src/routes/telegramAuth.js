@@ -37,7 +37,7 @@ function respondToPopup(res, origin, payload) {
 <script>
   try {
     if (window.opener) {
-      window.opener.postMessage(${json}, ${JSON.stringify(origin)});
+      window.opener.postMessage(${json}, '*');
     }
   } catch(e) {}
   window.close();
