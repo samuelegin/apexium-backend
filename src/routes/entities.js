@@ -212,24 +212,34 @@ const xpLogsRouter = buildEntityRouter('xp_logs', {
   },
 });
 
-const path = require('path');
-const fs = require('fs');
 const multer = require('multer');
+const cloudinary = require('cloudinary').v2;
+const { Readable } = require('stream');
 
-const uploadDir = path.join(__dirname, '..', '..', 'uploads');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
+// Cloudinary config — set CLOUDINARY_URL in env (format: cloudinary://api_key:api_secret@cloud_name)
+cloudinary.config({ secure: true });
 
-const storage = multer.diskStorage({
-  destination: uploadDir,
-  filename: (req, file, cb) => {
-    const id = uuidv4();
-    const ext = path.extname(file.originalname) || '';
-    cb(null, `${id}${ext}`);
+// Use memory storage — no files written to disk
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max
+  fileFilter: (req, file, cb) => {
+    const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf'];
+    if (allowed.includes(file.mimetype)) return cb(null, true);
+    cb(new Error(`File type not allowed: ${file.mimetype}`));
   },
 });
-const upload = multer({ storage });
+
+// Upload buffer to Cloudinary via stream
+function uploadToCloudinary(buffer, options = {}) {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(options, (error, result) => {
+      if (error) return reject(error);
+      resolve(result);
+    });
+    Readable.from(buffer).pipe(stream);
+  });
+}
 
 const uploadsRouter = express.Router();
 uploadsRouter.post('/', authMiddleware, upload.single('file'), async (req, res) => {
@@ -237,19 +247,40 @@ uploadsRouter.post('/', authMiddleware, upload.single('file'), async (req, res) 
     return res.status(400).json({ message: 'No file uploaded' });
   }
 
-  const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
   try {
-    const db = getDb();
-    if (req.user && req.user.id) {
-      await db.run('UPDATE users SET avatar_url = ?, updated_date = ? WHERE id = ?', fileUrl, new Date().toISOString(), req.user.id);
-      const updated = await db.get('SELECT * FROM users WHERE id = ?', req.user.id);
-      return res.json({ file_url: fileUrl, user: updated });
-    }
-  } catch (err) {
-    console.error('[uploads] failed to persist avatar_url', err);
-  }
+    // Determine upload type from query param: ?type=avatar | cv | proof (default: general)
+    const uploadType = req.query.type || 'general';
+    const isImage    = req.file.mimetype.startsWith('image/');
 
-  res.json({ file_url: fileUrl });
+    const cloudinaryOptions = {
+      folder:         `apexium/${uploadType}`,
+      resource_type:  isImage ? 'image' : 'raw',
+      public_id:      `${req.user.id}_${Date.now()}`,
+      // Auto-optimize images
+      ...(isImage && {
+        transformation: [{ quality: 'auto', fetch_format: 'auto' }],
+      }),
+    };
+
+    const result  = await uploadToCloudinary(req.file.buffer, cloudinaryOptions);
+    const fileUrl = result.secure_url;
+
+    const db  = getDb();
+    const now = new Date().toISOString();
+
+    if (uploadType === 'avatar') {
+      await db.run('UPDATE users SET avatar_url = ?, updated_date = ? WHERE id = ?', fileUrl, now, req.user.id);
+    } else if (uploadType === 'cv') {
+      await db.run('UPDATE users SET cv_url = ?, updated_date = ? WHERE id = ?', fileUrl, now, req.user.id);
+    }
+
+    const updated = await db.get('SELECT * FROM users WHERE id = ?', req.user.id);
+    return res.json({ file_url: fileUrl, user: updated });
+
+  } catch (err) {
+    console.error('[uploads] Cloudinary error', err);
+    return res.status(500).json({ message: err.message || 'Upload failed' });
+  }
 });
 
 const aiRouter = express.Router();

@@ -9,6 +9,7 @@
     "seed": "node src/seed.js"
   },
   "dependencies": {
+    "cloudinary": "^2.5.1",
     "bcryptjs": "^2.4.3",
     "pg": "^8.13.0",
     "cors": "^2.8.5",
