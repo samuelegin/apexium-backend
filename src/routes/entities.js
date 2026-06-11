@@ -100,7 +100,7 @@ jobsRouter.get('/pending-release', authMiddleware, async (req, res) => {
 
 jobsRouter.get('/', authMiddleware, async (req, res) => {
   const db = getDb();
-  const { _sort, _limit, ...filters } = req.query;
+  const { _sort, _limit, t: _t, ...filters } = req.query; // strip cache-buster
   let sql = `SELECT * FROM jobs WHERE escrow_funded = TRUE`;
   const params = [];
   const JOB_BOOL = new Set(['escrow_funded','escrow_taken','escrow_release_pending','escrow_released','extension_requested']);

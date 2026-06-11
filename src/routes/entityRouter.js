@@ -49,7 +49,7 @@ function buildEntityRouter(table, hooks = {}) {
 
   router.get('/', authMiddleware, async (req, res) => {
     const db = getDb();
-    const { _sort, _limit, ...filters } = req.query;
+    const { _sort, _limit, t: _t, ...filters } = req.query; // strip cache-buster
     let sql = `SELECT * FROM ${table} WHERE 1=1`;
     const params = [];
     const boolCols = new Set((BOOL_COLS[table] || []));
