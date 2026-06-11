@@ -88,11 +88,9 @@ async function handleTelegramCallback(req, res) {
         'UPDATE users SET telegram_id = ?, telegram_username = ?, updated_date = ? WHERE id = ?',
         telegramId, telegramUsername, now, userIdParam,
       );
-      return respondToPopup(res, origin, {
-        type: 'telegram_profile',
-        telegram_id:       telegramId,
-        telegram_username: telegramUsername,
-      });
+      // Redirect back to frontend profile page with success flag
+      const profileRedirect = `${redirectOrigin.replace(/\/$/, '')}/profile?telegram_connected=1`;
+      return res.redirect(profileRedirect);
     }
 
     // ── Login / registration mode ─────────────────────────────────────────────
