@@ -1,9 +1,9 @@
 const express = require('express');
-const crypto = require('crypto');
+const crypto  = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const { getDb } = require('../database');
 const { authMiddleware } = require('../middleware/auth');
-const { makeToken, sanitizeUser } = require('./authHelpers');
+const { makeToken } = require('./authHelpers');
 
 const router = express.Router();
 
@@ -29,45 +29,61 @@ function verifyTelegramAuth(data, botToken) {
   return hmac === hash;
 }
 
-// Respond with a page that postMessages result to opener then closes itself
-function respondToPopup(res, origin, payload) {
+// Sends a page that postMessages result to opener then closes itself (login flow)
+function respondToPopup(res, payload) {
   const json = JSON.stringify(payload).replace(/</g, '\\u003c');
   res.set('Cache-Control', 'no-store');
   res.send(`<!doctype html><html><head><meta charset="utf-8"></head><body>
 <script>
-  try {
-    if (window.opener) {
-      window.opener.postMessage(${json}, '*');
-    }
-  } catch(e) {}
+  try { if (window.opener) window.opener.postMessage(${json}, '*'); } catch(e) {}
   window.close();
 </script>
 </body></html>`);
 }
 
+// Redirects back to the frontend (profile connect flow)
+function respondWithRedirect(res, frontendUrl) {
+  res.set('Cache-Control', 'no-store');
+  res.send(`<!doctype html><html><head><meta charset="utf-8"></head><body>
+<script>
+  window.location.replace(${JSON.stringify(frontendUrl)});
+</script>
+</body></html>`);
+}
+
 async function handleTelegramCallback(req, res) {
-  const origin       = req.body?.origin       || req.query?.origin       || FRONTEND_URL;
-  const callbackType = req.body?.callback_type || req.query?.callback_type || '';
-  const userIdParam  = req.body?.user_id       || req.query?.user_id       || '';
-  const payload      = Object.keys(req.body || {}).length ? { ...req.body } : { ...req.query };
+  const origin       = req.query?.origin       || req.body?.origin       || FRONTEND_URL;
+  const callbackType = req.query?.callback_type || req.body?.callback_type || '';
+  const userIdParam  = req.query?.user_id       || req.body?.user_id       || '';
+
+  // Build the telegram payload from query or body, stripping our custom params
+  const payload = { ...(Object.keys(req.query).length ? req.query : req.body) };
   delete payload.origin;
   delete payload.callback_type;
   delete payload.user_id;
 
-  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
-  res.set('Pragma', 'no-cache');
-  res.set('Expires', '0');
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
 
-  if (!payload?.hash)      return respondToPopup(res, origin, { error: 'missing_payload' });
-  if (!TELEGRAM_BOT_TOKEN) return respondToPopup(res, origin, { error: 'server_misconfigured' });
+  if (!payload?.hash) {
+    if (callbackType === 'profile') return respondWithRedirect(res, `${origin.replace(/\/$/, '')}/profile?telegram_error=missing_payload`);
+    return respondToPopup(res, { error: 'missing_payload' });
+  }
+  if (!TELEGRAM_BOT_TOKEN) {
+    if (callbackType === 'profile') return respondWithRedirect(res, `${origin.replace(/\/$/, '')}/profile?telegram_error=server_misconfigured`);
+    return respondToPopup(res, { error: 'server_misconfigured' });
+  }
 
   try {
-    if (!verifyTelegramAuth(payload, TELEGRAM_BOT_TOKEN))
-      return respondToPopup(res, origin, { error: 'invalid_signature' });
+    if (!verifyTelegramAuth(payload, TELEGRAM_BOT_TOKEN)) {
+      if (callbackType === 'profile') return respondWithRedirect(res, `${origin.replace(/\/$/, '')}/profile?telegram_error=invalid_signature`);
+      return respondToPopup(res, { error: 'invalid_signature' });
+    }
 
     const authAge = Math.floor(Date.now() / 1000) - Number(payload.auth_date || 0);
-    if (authAge > 86400)
-      return respondToPopup(res, origin, { error: 'expired' });
+    if (authAge > 86400) {
+      if (callbackType === 'profile') return respondWithRedirect(res, `${origin.replace(/\/$/, '')}/profile?telegram_error=expired`);
+      return respondToPopup(res, { error: 'expired' });
+    }
 
     const db              = getDb();
     const telegramId      = String(payload.id);
@@ -78,32 +94,32 @@ async function handleTelegramCallback(req, res) {
     if (callbackType === 'profile' && userIdParam) {
       const targetUser = await db.get('SELECT * FROM users WHERE id = ?', userIdParam);
       if (!targetUser)
-        return respondToPopup(res, origin, { error: 'user_not_found' });
+        return respondWithRedirect(res, `${origin.replace(/\/$/, '')}/profile?telegram_error=user_not_found`);
 
       const existingOwner = await db.get('SELECT id FROM users WHERE telegram_id = ?', telegramId);
       if (existingOwner && existingOwner.id !== userIdParam)
-        return respondToPopup(res, origin, { error: 'already_linked' });
+        return respondWithRedirect(res, `${origin.replace(/\/$/, '')}/profile?telegram_error=already_linked`);
 
       await db.run(
         'UPDATE users SET telegram_id = ?, telegram_username = ?, updated_date = ? WHERE id = ?',
         telegramId, telegramUsername, now, userIdParam,
       );
-      // Redirect back to frontend profile page with success flag
-      const profileRedirect = `${origin.replace(/\/$/, '')}/profile?telegram_connected=1`;
-      return res.redirect(profileRedirect);
+
+      // Redirect back to frontend — the page uses ?telegram_connected=1 to show success toast
+      return respondWithRedirect(res, `${origin.replace(/\/$/, '')}/profile?telegram_connected=1`);
     }
 
     // ── Login / registration mode ─────────────────────────────────────────────
     let user = await db.get('SELECT * FROM users WHERE telegram_id = ?', telegramId);
 
     if (!user) {
-      const base     = (telegramUsername || `tg_${payload.first_name || 'user'}${(Math.random()*10000)|0}`)
+      const base     = (telegramUsername || `tg_${payload.first_name || 'user'}${(Math.random() * 10000) | 0}`)
                          .replace(/[^a-zA-Z0-9_]/g, '').toLowerCase();
       const taken    = await db.get('SELECT id FROM users WHERE username = ?', base);
-      const username = taken ? `${base}_${uuidv4().slice(0,4)}` : base;
+      const username = taken ? `${base}_${uuidv4().slice(0, 4)}` : base;
       const id       = uuidv4();
       const email    = `telegram_${telegramId}@no-reply.apexium`;
-      const refCode  = uuidv4().slice(0,8).toUpperCase();
+      const refCode  = uuidv4().slice(0, 8).toUpperCase();
       await db.run(
         `INSERT INTO users (id,email,password_hash,full_name,username,referral_code,top_categories,created_date,updated_date,telegram_id,telegram_username)
          VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
@@ -118,14 +134,16 @@ async function handleTelegramCallback(req, res) {
     }
 
     const token = makeToken(user);
-    return respondToPopup(res, origin, { type: 'telegram_login', token });
+    return respondToPopup(res, { type: 'telegram_login', token });
 
   } catch (err) {
     console.error('[telegramAuth] error', err);
-    return respondToPopup(res, origin, { error: 'server_error' });
+    if (callbackType === 'profile') return respondWithRedirect(res, `${origin.replace(/\/$/, '')}/profile?telegram_error=server_error`);
+    return respondToPopup(res, { error: 'server_error' });
   }
 }
 
+// Disconnect endpoint
 router.post('/telegram/disconnect', authMiddleware, async (req, res) => {
   try {
     res.set('Cache-Control', 'no-store');
@@ -142,7 +160,7 @@ router.post('/telegram/disconnect', authMiddleware, async (req, res) => {
   }
 });
 
-// Widget page — opens in popup, hosts Telegram login button
+// Widget page — full page navigation, hosts Telegram login button
 router.get('/telegram', (req, res) => {
   const botUser      = TELEGRAM_BOT_USERNAME || 'your_bot_username';
   const origin       = req.query.origin       || FRONTEND_URL;
@@ -153,24 +171,29 @@ router.get('/telegram', (req, res) => {
   if (callbackType) callbackUrl += `&callback_type=${encodeURIComponent(callbackType)}`;
   if (userId)       callbackUrl += `&user_id=${encodeURIComponent(userId)}`;
 
+  res.set('Cache-Control', 'no-store');
   res.send(`<!doctype html>
 <html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <style>
-    body { margin:0; display:flex; align-items:center; justify-content:center; min-height:100vh; background:#fff; }
+    body { margin:0; display:flex; align-items:center; justify-content:center; min-height:100vh; background:#fff; font-family:sans-serif; }
+    p { color:#888; font-size:14px; }
   </style>
 </head>
 <body>
-  <script async
-    src="https://telegram.org/js/telegram-widget.js?22"
-    data-telegram-login="${botUser}"
-    data-size="large"
-    data-userpic="false"
-    data-auth-url="${callbackUrl}"
-    data-request-access="write">
-  </script>
+  <div style="text-align:center">
+    <script async
+      src="https://telegram.org/js/telegram-widget.js?22"
+      data-telegram-login="${botUser}"
+      data-size="large"
+      data-userpic="false"
+      data-auth-url="${callbackUrl}"
+      data-request-access="write">
+    </script>
+    <p>Click the button above to connect your Telegram</p>
+  </div>
 </body>
 </html>`);
 });
