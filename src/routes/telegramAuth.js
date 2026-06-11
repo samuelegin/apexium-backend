@@ -139,6 +139,50 @@ async function handleTelegramCallback(req, res) {
   }
 }
 
+// Direct connect endpoint — called by frontend after data-onauth callback
+// Verifies the Telegram payload and links to the authenticated user
+router.post('/telegram/connect', authMiddleware, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  if (!TELEGRAM_BOT_TOKEN) return res.status(500).json({ error: 'server_misconfigured' });
+
+  const payload = { ...req.body };
+  const userIdParam = payload.user_id;
+  delete payload.user_id;
+
+  if (!payload.hash) return res.status(400).json({ error: 'missing_hash' });
+
+  try {
+    if (!verifyTelegramAuth(payload, TELEGRAM_BOT_TOKEN))
+      return res.status(401).json({ error: 'invalid_signature' });
+
+    const authAge = Math.floor(Date.now() / 1000) - Number(payload.auth_date || 0);
+    if (authAge > 86400) return res.status(401).json({ error: 'expired' });
+
+    const db              = getDb();
+    const telegramId      = String(payload.id);
+    const telegramUsername = payload.username || '';
+    const now             = new Date().toISOString();
+
+    // Must match the authenticated user
+    if (req.user.id !== userIdParam)
+      return res.status(403).json({ error: 'user_mismatch' });
+
+    const existingOwner = await db.get('SELECT id FROM users WHERE telegram_id = ?', telegramId);
+    if (existingOwner && existingOwner.id !== req.user.id)
+      return res.status(409).json({ error: 'already_linked' });
+
+    await db.run(
+      'UPDATE users SET telegram_id = ?, telegram_username = ?, updated_date = ? WHERE id = ?',
+      telegramId, telegramUsername, now, req.user.id,
+    );
+
+    return res.json({ success: true, telegram_id: telegramId, telegram_username: telegramUsername });
+  } catch (err) {
+    console.error('[telegramAuth] connect error', err);
+    return res.status(500).json({ error: 'server_error' });
+  }
+});
+
 // Disconnect endpoint
 router.post('/telegram/disconnect', authMiddleware, async (req, res) => {
   try {
