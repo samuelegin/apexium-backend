@@ -33,7 +33,7 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc:     ["'self'"],
-      scriptSrc:      ["'self'", "'unsafe-inline'", 'https://cdn.jsdelivr.net', 'https://telegram.org'],
+      scriptSrc:      ["'self'", "'unsafe-inline'", 'https://cdn.jsdelivr.net', 'https://telegram.org', 'https://oauth.telegram.org'],
       styleSrc:       ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
       fontSrc:        ["'self'", 'https://fonts.gstatic.com'],
       imgSrc:         ["'self'", 'data:', 'https:', 'blob:'],

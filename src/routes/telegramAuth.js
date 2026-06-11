@@ -44,11 +44,7 @@ function respondToPopup(res, payload) {
 // Redirects back to the frontend (profile connect flow)
 function respondWithRedirect(res, frontendUrl) {
   res.set('Cache-Control', 'no-store');
-  res.send(`<!doctype html><html><head><meta charset="utf-8"></head><body>
-<script>
-  window.location.replace(${JSON.stringify(frontendUrl)});
-</script>
-</body></html>`);
+  return res.redirect(302, frontendUrl);
 }
 
 async function handleTelegramCallback(req, res) {
