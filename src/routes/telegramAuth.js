@@ -89,7 +89,7 @@ async function handleTelegramCallback(req, res) {
         telegramId, telegramUsername, now, userIdParam,
       );
       // Redirect back to frontend profile page with success flag
-      const profileRedirect = `${redirectOrigin.replace(/\/$/, '')}/profile?telegram_connected=1`;
+      const profileRedirect = `${origin.replace(/\/$/, '')}/profile?telegram_connected=1`;
       return res.redirect(profileRedirect);
     }
 
