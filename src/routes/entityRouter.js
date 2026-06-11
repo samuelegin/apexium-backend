@@ -28,7 +28,7 @@ function deserialize(table, row) {
     }
   }
   for (const c of (BOOL_COLS[table] || [])) {
-    if (out[c] !== undefined) out[c] = out[c] === 1 || out[c] === true;
+    if (out[c] !== undefined) out[c] = out[c] === true || out[c] === 1 || out[c] === 't' || out[c] === 'true';
   }
   return out;
 }

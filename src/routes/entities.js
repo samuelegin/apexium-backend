@@ -8,7 +8,7 @@ function boolsToBool(row, boolFields) {
   if (!row) return row;
   const out = { ...row };
   for (const field of boolFields) {
-    if (out[field] !== undefined) out[field] = out[field] === 1 || out[field] === true;
+    if (out[field] !== undefined) out[field] = out[field] === true || out[field] === 1 || out[field] === 't' || out[field] === 'true';
   }
   return out;
 }
@@ -54,7 +54,7 @@ async function recalcJobberPiScore(db, job) {
 const BOOL_JOB = ['escrow_funded','escrow_taken','escrow_release_pending','escrow_released','extension_requested'];
 function deserializeJob(r) {
   const out = { ...r };
-  for (const b of BOOL_JOB) out[b] = out[b] === 1 || out[b] === true;
+  for (const b of BOOL_JOB) out[b] = out[b] === true || out[b] === 1 || out[b] === 't' || out[b] === 'true';
   return out;
 }
 
