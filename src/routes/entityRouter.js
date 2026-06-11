@@ -52,9 +52,10 @@ function buildEntityRouter(table, hooks = {}) {
     const { _sort, _limit, ...filters } = req.query;
     let sql = `SELECT * FROM ${table} WHERE 1=1`;
     const params = [];
+    const boolCols = new Set((BOOL_COLS[table] || []));
     for (const [k, v] of Object.entries(filters)) {
       sql += ` AND \`${k}\` = ?`;
-      params.push(v);
+      params.push(boolCols.has(k) ? (v === 'true' || v === '1' || v === true) : v);
     }
     if (_sort) {
       const desc = _sort.startsWith('-');

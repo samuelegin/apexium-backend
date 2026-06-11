@@ -103,9 +103,10 @@ jobsRouter.get('/', authMiddleware, async (req, res) => {
   const { _sort, _limit, ...filters } = req.query;
   let sql = `SELECT * FROM jobs WHERE escrow_funded = TRUE`;
   const params = [];
+  const JOB_BOOL = new Set(['escrow_funded','escrow_taken','escrow_release_pending','escrow_released','extension_requested']);
   for (const [k, v] of Object.entries(filters)) {
     sql += ` AND \`${k}\` = ?`;
-    params.push(v);
+    params.push(JOB_BOOL.has(k) ? (v === 'true' || v === '1' || v === true) : v);
   }
   if (_sort) {
     const desc = _sort.startsWith('-');
@@ -194,7 +195,7 @@ const xpLogsRouter = buildEntityRouter('xp_logs', {
       const today = new Date().toISOString().split('T')[0];
       const existing = await db.get(`
         SELECT id FROM xp_logs
-        WHERE user_email = ? AND source = 'daily_login' AND DATE(created_date) = ?
+        WHERE user_email = ? AND source = 'daily_login' AND created_date::date = ?::date
       `, data.user_email, today);
       if (existing) {
         console.log(`[XP] Daily login already awarded today for ${data.user_email}`);
