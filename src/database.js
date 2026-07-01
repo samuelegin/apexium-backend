@@ -1,11 +1,3 @@
-/**
- * database.js — PostgreSQL wrapper for Apexium backend.
- *
- * Uses `pg` (node-postgres). Set DATABASE_URL in env.
- * For local dev without Postgres, set DATABASE_URL to a local pg connection string.
- *
- * Exposes the same dbProxy interface as before so no route files need changing.
- */
 require('dotenv').config();
 const { Pool } = require('pg');
 
@@ -23,10 +15,9 @@ async function initDb() {
     ssl: DATABASE_URL.includes('localhost') ? false : { rejectUnauthorized: false },
     max: 10,
     idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 5000,
+    connectionTimeoutMillis: 15000,
   });
 
-  // Verify connection
   const client = await pool.connect();
   console.log('Connected to PostgreSQL');
   client.release();
@@ -39,20 +30,14 @@ function getDb() {
   return dbProxy;
 }
 
-// ── Param conversion ─────────────────────────────────────────────────────────
-// SQLite uses ? placeholders; Postgres uses $1, $2 ...
-// Also strips backtick-quoted identifiers → double-quoted identifiers.
 function toPostgres(sql, params = []) {
   let i = 0;
   const converted = sql
-    // backtick-quoted identifiers → double-quoted
     .replace(/`([^`]+)`/g, '"$1"')
-    // ? → $1, $2 ...
     .replace(/\?/g, () => `$${++i}`);
   return { sql: converted, params };
 }
 
-// ── Core query helpers ───────────────────────────────────────────────────────
 async function runQuery(sql, params = []) {
   const pg = toPostgres(sql, params);
   await pool.query(pg.sql, pg.params);
@@ -79,7 +64,6 @@ function transaction(fn) {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      // Wrap client with same proxy interface so hooks work unchanged
       const txProxy = makeTxProxy(client);
       const result = await fn.call({ db: txProxy }, ...args);
       await client.query('COMMIT');
@@ -137,11 +121,6 @@ const dbProxy = {
   transaction,
 };
 
-// ── Schema ───────────────────────────────────────────────────────────────────
-// Uses Postgres types:
-//   - BOOLEAN instead of INTEGER (0/1) for bool columns
-//   - NOW() instead of datetime('now')
-//   - TEXT arrays serialised as TEXT (JSON strings) to stay compatible with existing code
 async function createSchema() {
   const statements = [
     `CREATE TABLE IF NOT EXISTS users (
@@ -321,6 +300,37 @@ async function createSchema() {
   for (const stmt of statements) {
     await pool.query(stmt);
   }
+
+  const jobColumnMigrations = [
+    `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS onchain_job_id TEXT DEFAULT ''`,
+    `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS escrow_status TEXT DEFAULT 'none'`, // none|funded|completed|claimed|refunded
+    `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS escrow_disputed BOOLEAN DEFAULT FALSE`,
+    `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS fund_tx_hash TEXT DEFAULT ''`,
+    `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS complete_tx_hash TEXT DEFAULT ''`,
+    `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS claim_tx_hash TEXT DEFAULT ''`,
+    `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS dispute_tx_hash TEXT DEFAULT ''`,
+    `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS resolve_tx_hash TEXT DEFAULT ''`,
+    `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS funded_at TEXT DEFAULT ''`,
+    `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS completed_at TEXT DEFAULT ''`,
+    `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS claimed_at TEXT DEFAULT ''`,
+    `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS timeout_deadline TEXT DEFAULT ''`,
+    `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS payout_recipients TEXT DEFAULT '[]'`, // JSON array of addresses, locked at fund time
+    `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS payout_shares TEXT DEFAULT '[]'`,     // JSON array of integer percentages, same order as recipients
+    `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS fee_bps_at_claim INTEGER DEFAULT 0`,
+    `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS fee_amount REAL DEFAULT 0`,
+    `CREATE INDEX IF NOT EXISTS idx_jobs_onchain_job_id ON jobs (onchain_job_id)`,
+  ];
+  for (const stmt of jobColumnMigrations) {
+    await pool.query(stmt);
+  }
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS indexer_state (
+      id TEXT PRIMARY KEY,
+      last_synced_block BIGINT DEFAULT 0,
+      updated_date TEXT DEFAULT (to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
+    )
+  `);
 
   console.log('Schema ready');
 }

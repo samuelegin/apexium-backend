@@ -18,7 +18,7 @@ console.log('[discordAuth] config', {
 });
 
 async function handleDiscordCallback(req, res) {
-  const code     = req.query?.code || req.body?.code;
+  const code = req.query?.code || req.body?.code;
   const stateStr = req.query?.state || req.body?.state;
 
   if (!code) return res.status(400).send('Missing authorization code');
@@ -26,26 +26,22 @@ async function handleDiscordCallback(req, res) {
     return res.status(500).send('Server misconfigured (missing Discord credentials)');
   }
 
-  // Parse all callback context from the state param (origin, callbackType, user_id).
-  // Discord only preserves `state` on redirect — custom query params are lost.
-  let origin         = FRONTEND_URL;
-  let callbackType   = '';
+  let origin = FRONTEND_URL;
+  let callbackType = '';
   let userIdToUpdate = null;
 
   if (stateStr) {
     try {
       const stateData = JSON.parse(decodeURIComponent(stateStr));
-      origin         = stateData.origin       || FRONTEND_URL;
-      callbackType   = stateData.callbackType || '';
-      userIdToUpdate = stateData.user_id       || null;
+      origin = stateData.origin || FRONTEND_URL;
+      callbackType = stateData.callbackType || '';
+      userIdToUpdate = stateData.user_id || null;
     } catch (_) {
-      // Legacy fallback: bare user ID string
       userIdToUpdate = stateStr;
     }
   }
 
   try {
-    // Exchange code for access token
     const tokenResponse = await fetch('https://discord.com/api/oauth2/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -66,7 +62,6 @@ async function handleDiscordCallback(req, res) {
     const tokenData   = await tokenResponse.json();
     const accessToken = tokenData.access_token;
 
-    // Get user info from Discord
     const userResponse = await fetch('https://discord.com/api/users/@me', {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
@@ -76,15 +71,14 @@ async function handleDiscordCallback(req, res) {
       return res.status(401).send('Failed to fetch user info from Discord');
     }
 
-    const discordUser     = await userResponse.json();
-    const discordId       = String(discordUser.id);
+    const discordUser = await userResponse.json();
+    const discordId = String(discordUser.id);
     const discordUsername = discordUser.username || '';
 
-    const db  = getDb();
+    const db = getDb();
     const now = new Date().toISOString();
     const redirectOrigin = origin.replace(/\/$/, '');
 
-    // Profile connection mode: link Discord to an existing logged-in user
     if (callbackType === 'profile' && userIdToUpdate) {
       console.log('[discordAuth] profile connect mode, updating user', userIdToUpdate);
       await db.run(
@@ -95,7 +89,6 @@ async function handleDiscordCallback(req, res) {
       return res.redirect(redirectTarget);
     }
 
-    // Standard login / registration mode
     let user = await db.get('SELECT * FROM users WHERE discord_id = ?', discordId);
 
     if (!user) {
@@ -103,10 +96,10 @@ async function handleDiscordCallback(req, res) {
       const baseUsername   = (discordUsername || `discord_${discordUser.global_name || 'user'}${(Math.random() * 10000) | 0}`)
         .toString().replace(/[^a-zA-Z0-9_]/g, '').toLowerCase();
       const usernameTaken  = await db.get('SELECT id FROM users WHERE username = ?', baseUsername);
-      const username       = usernameTaken ? `${baseUsername}_${uuidv4().slice(0, 4)}` : baseUsername;
-      const id             = uuidv4();
+      const username = usernameTaken ? `${baseUsername}_${uuidv4().slice(0, 4)}` : baseUsername;
+      const id = uuidv4();
       const syntheticEmail = `discord_${discordId}@no-reply.apexium`;
-      const referral_code  = uuidv4().slice(0, 8).toUpperCase();
+      const referral_code = uuidv4().slice(0, 8).toUpperCase();
 
       await db.run(
         `INSERT INTO users (id,email,password_hash,full_name,username,referral_code,top_categories,created_date,updated_date,discord_id,discord_username)
@@ -122,7 +115,7 @@ async function handleDiscordCallback(req, res) {
     }
 
     // Return JWT token
-    const token          = makeToken(user);
+    const token = makeToken(user);
     const redirectTarget = `${redirectOrigin}/auth/callback?token=${encodeURIComponent(token)}`;
     return res.redirect(redirectTarget);
   } catch (err) {
@@ -131,20 +124,18 @@ async function handleDiscordCallback(req, res) {
   }
 }
 
-// Redirect to Discord OAuth2
 router.get('/discord', (req, res) => {
-  const origin       = req.query.origin       || FRONTEND_URL;
+  const origin = req.query.origin       || FRONTEND_URL;
   const callbackType = req.query.callback_type || '';
-  const userId       = req.query.user_id       || '';
+  const userId = req.query.user_id || '';
 
   if (!DISCORD_CLIENT_ID) {
     return res.status(500).send('Server misconfigured (missing Discord client ID)');
   }
 
   const redirectUri = `${BACKEND_URL}/api/auth/discord/callback`;
-  const scope       = ['identify'];
+  const scope = ['identify'];
 
-  // Encode all context in state — the only param Discord guarantees to return
   const stateObj = { origin, callbackType };
   if (userId) stateObj.user_id = userId;
   const state = encodeURIComponent(JSON.stringify(stateObj));

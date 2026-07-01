@@ -3,6 +3,7 @@ const { v4: uuidv4 } = require('uuid');
 const { buildEntityRouter } = require('./entityRouter');
 const { authMiddleware } = require('../middleware/auth');
 const { getDb } = require('../database');
+const { applyJobCompletionEffects } = require('../escrowEffects');
 
 function boolsToBool(row, boolFields) {
   if (!row) return row;
@@ -13,55 +14,26 @@ function boolsToBool(row, boolFields) {
   return out;
 }
 
-async function recalcJobberPiScore(db, job) {
-  const jobberEmail = job.selected_applicant_email;
-  if (!jobberEmail) return;
-
-  const kpis = await db.all('SELECT weight, completion_percent FROM kpis WHERE job_id = ?', job.id);
-  const jobPiScore = kpis.reduce((sum, k) => sum + (k.completion_percent * k.weight / 100), 0);
-
-  const prevCompleted = await db.all(`
-    SELECT id FROM jobs
-    WHERE selected_applicant_email = ? AND status = 'completed' AND id != ?
-  `, jobberEmail, job.id);
-
-  let totalPi = jobPiScore;
-  for (const prev of prevCompleted) {
-    const prevKpis = await db.all('SELECT weight, completion_percent FROM kpis WHERE job_id = ?', prev.id);
-    totalPi += prevKpis.reduce((sum, k) => sum + (k.completion_percent * k.weight / 100), 0);
-  }
-
-  const jobCount = prevCompleted.length + 1;
-  const newAverage = Math.round((totalPi / jobCount) * 10) / 10;
-
-  await db.run(`
-    UPDATE users
-    SET average_pi_score = ?,
-        total_jobs_completed = total_jobs_completed + 1,
-        updated_date = ?
-    WHERE email = ?
-  `, newAverage, new Date().toISOString(), jobberEmail);
-
-  const xpAmount = 500;
-  const xpId = uuidv4();
-  await db.run(`INSERT INTO xp_logs (id, user_email, source, xp_amount, label, reference_id, created_date)
-    VALUES (?, ?, ?, ?, ?, ?, ?)`, xpId, jobberEmail, 'job_completed', xpAmount, `Job completed: ${job.title || job.id}`, job.id, new Date().toISOString());
-  await db.run('UPDATE users SET xp_total = xp_total + ? WHERE email = ?', xpAmount, jobberEmail);
-
-  console.log(`[PI] Job ${job.id} completed — jobber ${jobberEmail} new avg PI: ${newAverage} (${jobCount} jobs)`);
-}
-
-const BOOL_JOB = ['escrow_funded','escrow_taken','escrow_release_pending','escrow_released','extension_requested'];
+const BOOL_JOB = ['escrow_funded','escrow_taken','escrow_release_pending','escrow_released','escrow_disputed','extension_requested'];
 function deserializeJob(r) {
   const out = { ...r };
   for (const b of BOOL_JOB) out[b] = out[b] === true || out[b] === 1 || out[b] === 't' || out[b] === 'true';
+  for (const c of ['payout_recipients', 'payout_shares']) {
+    if (out[c] !== undefined) {
+      try { out[c] = JSON.parse(out[c]); } catch { out[c] = []; }
+    }
+  }
   return out;
 }
 
 const jobsCrud = buildEntityRouter('jobs', {
   beforeUpdate: async (db, id, data, req, existing) => {
     if (data.status === 'in_progress' && existing.status !== 'in_progress') {
-      // Enforce wallet when transitioning to in_progress
+      // Enforce wallet(s) connected — and, for a pod, a fully-approved payout
+      // split — before a job can move to "ready to fund". The contract has
+      // no on-chain pod negotiation anymore (split is locked in at fundJob
+      // time), so this backend check is the ONLY gate left preventing an
+      // employer from funding with a split nobody actually agreed to.
       if (!data.selected_applicant_email && !existing.selected_applicant_email) {
         const err = new Error('Must select an applicant before starting the job.');
         err.statusCode = 400;
@@ -69,17 +41,45 @@ const jobsCrud = buildEntityRouter('jobs', {
       }
 
       const jobberEmail = data.selected_applicant_email || existing.selected_applicant_email;
-      const jobber = await db.get('SELECT wallet_address FROM users WHERE email = ?', jobberEmail);
-      if (!jobber || !jobber.wallet_address || jobber.wallet_address.trim() === '') {
-        const err = new Error(`Selected jobber ${jobberEmail} has not connected a wallet. Please select another applicant.`);
-        err.statusCode = 400;
-        throw err;
+      const application = await db.get(
+        `SELECT * FROM applications WHERE job_id = ? AND applicant_email = ? ORDER BY created_date DESC LIMIT 1`,
+        id, jobberEmail
+      );
+
+      if (application && application.is_pod) {
+        let podMembers;
+        try { podMembers = JSON.parse(application.pod_members || '[]'); } catch { podMembers = []; }
+
+        if (podMembers.length === 0) {
+          const err = new Error('Pod has no members on file.');
+          err.statusCode = 400;
+          throw err;
+        }
+        for (const member of podMembers) {
+          if (!member.wallet_address || member.wallet_address.trim() === '') {
+            const err = new Error(`Pod member ${member.email} has not connected a wallet. Please ask them to connect before starting the job.`);
+            err.statusCode = 400;
+            throw err;
+          }
+        }
+        const allApproved = podMembers.length > 0 && podMembers.every(m => m.approved === true);
+        if (!allApproved) {
+          const err = new Error('All pod members must approve the payout split before the job can start. Propose and collect approvals first.');
+          err.statusCode = 400;
+          throw err;
+        }
+      } else {
+        const jobber = await db.get('SELECT wallet_address FROM users WHERE email = ?', jobberEmail);
+        if (!jobber || !jobber.wallet_address || jobber.wallet_address.trim() === '') {
+          const err = new Error(`Selected jobber ${jobberEmail} has not connected a wallet. Please select another applicant.`);
+          err.statusCode = 400;
+          throw err;
+        }
       }
     }
 
     if (data.status === 'completed' && existing.status !== 'completed') {
-      data.escrow_release_pending = true;
-      await recalcJobberPiScore(db, { ...existing, ...data, id });
+      await applyJobCompletionEffects(db, { ...existing, ...data, id });
     }
   },
   beforeDelete: async (db, id, req, existing) => {
@@ -93,17 +93,12 @@ const jobsCrud = buildEntityRouter('jobs', {
 
 const jobsRouter = express.Router();
 
-jobsRouter.get('/pending-release', authMiddleware, async (req, res) => {
-  const rows = await getDb().all(`SELECT * FROM jobs WHERE escrow_release_pending = TRUE AND escrow_released = FALSE ORDER BY updated_date DESC`);
-  res.json(rows.map(deserializeJob));
-});
-
 jobsRouter.get('/', authMiddleware, async (req, res) => {
   const db = getDb();
   const { _sort, _limit, t: _t, ...filters } = req.query; // strip cache-buster
   let sql = `SELECT * FROM jobs WHERE escrow_funded = TRUE`;
   const params = [];
-  const JOB_BOOL = new Set(['escrow_funded','escrow_taken','escrow_release_pending','escrow_released','extension_requested']);
+  const JOB_BOOL = new Set(['escrow_funded','escrow_taken','escrow_release_pending','escrow_released','escrow_disputed','extension_requested']);
   for (const [k, v] of Object.entries(filters)) {
     sql += ` AND \`${k}\` = ?`;
     params.push(JOB_BOOL.has(k) ? (v === 'true' || v === '1' || v === true) : v);
@@ -176,18 +171,7 @@ const taskSubRouter = buildEntityRouter('task_submissions', {
   },
 });
 const referralsRouter = buildEntityRouter('referrals');
-const usersRouter = buildEntityRouter('users', {
-  afterUpdate: async (db, id, data, req, existing) => {
-    if (data.wallet_address && data.wallet_address.trim() && data.wallet_address !== existing.wallet_address) {
-      await db.run(`
-        UPDATE jobs
-        SET jobber_wallet = ?
-        WHERE selected_applicant_email = ?
-          AND (jobber_wallet IS NULL OR jobber_wallet = '')
-      `, data.wallet_address.trim(), existing.email);
-    }
-  },
-});
+const usersRouter = buildEntityRouter('users');
 
 const xpLogsRouter = buildEntityRouter('xp_logs', {
   beforeCreate: async (db, data) => {

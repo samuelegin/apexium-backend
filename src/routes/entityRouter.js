@@ -8,10 +8,11 @@ const { authMiddleware } = require('../middleware/auth');
 const JSON_COLS = {
   users: ['top_categories'],
   applications: ['pod_members', 'performance_snapshot'],
+  jobs: ['payout_recipients', 'payout_shares'],
 };
 
 const BOOL_COLS = {
-  jobs: ['escrow_funded', 'escrow_taken', 'escrow_release_pending', 'escrow_released', 'extension_requested'],
+  jobs: ['escrow_funded', 'escrow_taken', 'escrow_release_pending', 'escrow_released', 'escrow_disputed', 'extension_requested'],
   kpis: ['is_primary'],
   applications: ['is_pod'],
   notifications: ['is_read'],
