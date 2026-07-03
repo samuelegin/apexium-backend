@@ -5,26 +5,6 @@ const { authMiddleware } = require('../middleware/auth');
 const { getDb } = require('../database');
 const { applyJobCompletionEffects } = require('../escrowEffects');
 
-function boolsToBool(row, boolFields) {
-  if (!row) return row;
-  const out = { ...row };
-  for (const field of boolFields) {
-    if (out[field] !== undefined) out[field] = out[field] === true || out[field] === 1 || out[field] === 't' || out[field] === 'true';
-  }
-  return out;
-}
-
-const BOOL_JOB = ['escrow_funded','escrow_taken','escrow_release_pending','escrow_released','escrow_disputed','extension_requested'];
-function deserializeJob(r) {
-  const out = { ...r };
-  for (const b of BOOL_JOB) out[b] = out[b] === true || out[b] === 1 || out[b] === 't' || out[b] === 'true';
-  for (const c of ['payout_recipients', 'payout_shares']) {
-    if (out[c] !== undefined) {
-      try { out[c] = JSON.parse(out[c]); } catch { out[c] = []; }
-    }
-  }
-  return out;
-}
 
 const jobsCrud = buildEntityRouter('jobs', {
   beforeUpdate: async (db, id, data, req, existing) => {
@@ -93,26 +73,11 @@ const jobsCrud = buildEntityRouter('jobs', {
 
 const jobsRouter = express.Router();
 
-jobsRouter.get('/', authMiddleware, async (req, res) => {
-  const db = getDb();
-  const { _sort, _limit, t: _t, ...filters } = req.query; // strip cache-buster
-  let sql = `SELECT * FROM jobs WHERE escrow_funded = TRUE`;
-  const params = [];
-  const JOB_BOOL = new Set(['escrow_funded','escrow_taken','escrow_release_pending','escrow_released','escrow_disputed','extension_requested']);
-  for (const [k, v] of Object.entries(filters)) {
-    sql += ` AND \`${k}\` = ?`;
-    params.push(JOB_BOOL.has(k) ? (v === 'true' || v === '1' || v === true) : v);
-  }
-  if (_sort) {
-    const desc = _sort.startsWith('-');
-    sql += ` ORDER BY \`${desc ? _sort.slice(1) : _sort}\` ${desc ? 'DESC' : 'ASC'}`;
-  } else {
-    sql += ` ORDER BY created_date DESC`;
-  }
-  if (_limit) sql += ` LIMIT ${parseInt(_limit)}`;
-  const rows = await db.all(sql, ...params);
-  res.json(rows.map(r => deserializeJob(r)));
-});
+// NOTE: no custom GET '/' here anymore. Under the old design, jobs were
+// funded at posting time, so "not funded" meant "creation failed, hide it".
+// Now funding happens later at talent-selection time — every open job is
+// escrow_funded=false by design — so listing falls through to jobsCrud's
+// generic, ungated GET '/' below (jobsRouter.use(jobsCrud)).
 
 jobsRouter.delete('/cleanup-unfunded/:id', authMiddleware, async (req, res) => {
   const db = getDb();
