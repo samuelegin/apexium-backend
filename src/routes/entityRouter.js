@@ -87,7 +87,13 @@ function buildEntityRouter(table, hooks = {}) {
       const cols = Object.keys(data);
       await db.run(`INSERT INTO ${table} (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')})`, ...cols.map(c => data[c]));
       if (hooks.afterCreate) await hooks.afterCreate(db, data, req);
-      const row = await db.get(`SELECT * FROM ${table} WHERE id = ?`, id);
+      // Use data.id, not the local `id` var: if req.body included its own id
+      // (e.g. PostJob.jsx sending a pre-generated job UUID), the spread of
+      // `raw` above overwrites data.id with that value, and that's the id
+      // that actually got inserted. Selecting by the discarded local `id`
+      // finds nothing, so this returned null on every create with a
+      // caller-supplied id — which is exactly the jobs endpoint's case.
+      const row = await db.get(`SELECT * FROM ${table} WHERE id = ?`, data.id);
       res.status(201).json(deserialize(table, row));
     } catch (err) {
       res.status(err.statusCode || 400).json({ message: err.message });
