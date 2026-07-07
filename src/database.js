@@ -314,8 +314,9 @@ async function createSchema() {
     `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS completed_at TEXT DEFAULT ''`,
     `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS claimed_at TEXT DEFAULT ''`,
     `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS timeout_deadline TEXT DEFAULT ''`,
-    `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS payout_recipients TEXT DEFAULT '[]'`, // JSON array of addresses, locked at fund time
+    `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS payout_recipients TEXT DEFAULT '[]'`, // JSON array of addresses — set via setPayout(), any time before completion
     `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS payout_shares TEXT DEFAULT '[]'`,     // JSON array of integer percentages, same order as recipients
+    `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS payout_tx_hash TEXT DEFAULT ''`,      // tx hash of the most recent setPayout() call
     `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS fee_bps_at_claim INTEGER DEFAULT 0`,
     `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS fee_amount REAL DEFAULT 0`,
     `CREATE INDEX IF NOT EXISTS idx_jobs_onchain_job_id ON jobs (onchain_job_id)`,

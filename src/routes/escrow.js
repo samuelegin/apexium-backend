@@ -14,7 +14,7 @@ function getProvider() {
   return notifyProvider;
 }
 
-const VALID_TYPES = new Set(['fund', 'complete', 'claim', 'dispute', 'extend']);
+const VALID_TYPES = new Set(['fund', 'payout', 'complete', 'claim', 'dispute', 'extend']);
 
 router.post('/notify', authMiddleware, async (req, res) => {
   const { jobId, txHash, type } = req.body || {};
@@ -98,8 +98,16 @@ router.post('/pod-shares', authMiddleware, async (req, res) => {
   if (job.employer_email !== req.user.email) {
     return res.status(403).json({ message: 'only the employer can propose the pod payout split' });
   }
-  if (job.escrow_status && job.escrow_status !== 'none') {
-    return res.status(400).json({ message: 'job is already funded — payout split is locked' });
+  // v4: escrow_status is 'funded' the moment a job is posted+funded, well
+  // before any talent is picked — that's expected, not a lock. But setPayout()
+  // is now single-assignment on-chain (locked permanently after the first
+  // call, precisely so an employer can't swap the payout after the fact) —
+  // so once payout_recipients is actually populated, further DB-side
+  // proposals would be misleading and must be blocked too.
+  let alreadyLockedOnChain = false;
+  try { alreadyLockedOnChain = JSON.parse(job.payout_recipients || '[]').length > 0; } catch { /* ignore */ }
+  if (alreadyLockedOnChain || ['completed', 'claimed', 'refunded'].includes(job.escrow_status)) {
+    return res.status(400).json({ message: 'payout is already locked on-chain and cannot be re-proposed' });
   }
 
   let podMembers;

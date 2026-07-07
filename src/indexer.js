@@ -7,14 +7,15 @@ const BASE_RPC_URL   = process.env.BASE_RPC_URL || '';
 const POLL_INTERVAL_MS = Number(process.env.INDEXER_POLL_INTERVAL_MS || 15_000);
 
 const ESCROW_ABI = [
-  'event JobFunded(bytes32 indexed jobId, address indexed employer, uint256 amount, address[] recipients, uint256[] shares)',
+  'event JobFunded(bytes32 indexed jobId, address indexed employer, uint256 amount)',
+  'event PayoutSet(bytes32 indexed jobId, address[] recipients, uint256[] shares)',
   'event JobCompleted(bytes32 indexed jobId)',
   'event JobClaimed(bytes32 indexed jobId, address indexed triggeredBy, uint256 fee, uint256 distributed)',
   'event JobRefunded(bytes32 indexed jobId, address indexed employer, uint256 amount)',
   'event DisputeRaised(bytes32 indexed jobId, address indexed raisedBy)',
   'event DeadlineExtended(bytes32 indexed jobId, uint256 newDeadline)',
   'event FeeUpdated(address feeRecipient, uint256 feeBps)',
-  'function getJob(bytes32 jobId) view returns (tuple(address employer, uint256 amount, uint8 status, bool disputed, uint256 fundedAt, uint256 timeoutDeadline))',
+  'function getJob(bytes32 jobId) view returns (tuple(address employer, uint256 amount, uint8 status, bool disputed, uint256 fundedAt, uint256 timeoutDeadline, uint256 feeBpsAtFund, address feeRecipientAtFund))',
   'function getPayout(bytes32 jobId) view returns (address[] recipients, uint256[] shares)',
 ];
 
@@ -66,20 +67,45 @@ async function handleJobFunded(db, log, args) {
       escrow_status = 'funded',
       fund_tx_hash = ?,
       funded_at = ?,
-      payout_recipients = ?,
-      payout_shares = ?,
       updated_date = ?
     WHERE id = ?
   `,
     onchainId,
     log.transactionHash,
     new Date(block.timestamp * 1000).toISOString(),
-    JSON.stringify(args.recipients),
-    JSON.stringify(args.shares.map(s => Number(s))),
     isoNow(),
     row.id
   );
-  console.log(`[indexer] JobFunded → job ${row.id} (tx ${log.transactionHash})`);
+  console.log(`[indexer] JobFunded → job ${row.id} (tx ${log.transactionHash}) — no payout assigned yet`);
+}
+
+/**
+ * PayoutSet fires every time the employer assigns or re-assigns who gets
+ * paid. It's not a one-time thing like v3's JobFunded — it can arrive
+ * multiple times for the same job if the employer changes their pick before
+ * confirmComplete(), so this always just overwrites with the latest values.
+ */
+async function handlePayoutSet(db, log, args) {
+  const row = await resolveJobRowByOnchainId(db, args.jobId);
+  if (!row) {
+    console.warn(`[indexer] PayoutSet for unknown job ${args.jobId} — no matching DB row, skipping`);
+    return;
+  }
+  await db.run(`
+    UPDATE jobs SET
+      payout_recipients = ?,
+      payout_shares = ?,
+      payout_tx_hash = ?,
+      updated_date = ?
+    WHERE id = ?
+  `,
+    JSON.stringify(args.recipients),
+    JSON.stringify(args.shares.map(s => Number(s))),
+    log.transactionHash,
+    isoNow(),
+    row.id
+  );
+  console.log(`[indexer] PayoutSet → job ${row.id} (${args.recipients.length} recipient(s), tx ${log.transactionHash})`);
 }
 
 async function handleJobCompleted(db, log, args) {
@@ -174,6 +200,7 @@ async function handleFeeUpdated(db, log, args) {
 
 const HANDLERS = {
   JobFunded: handleJobFunded,
+  PayoutSet: handlePayoutSet,
   JobCompleted: handleJobCompleted,
   JobClaimed: handleJobClaimed,
   JobRefunded: handleJobRefunded,
@@ -196,6 +223,7 @@ async function processReceipt(db, receipt) {
     } catch {
       continue;
     }
+    if (!parsed) continue; // ethers v6 can return null here instead of throwing
     const handler = HANDLERS[parsed.name];
     if (!handler) continue;
     try {
@@ -224,22 +252,38 @@ async function reconcileJobRow(db, row) {
   const newDeadlineIso = new Date(Number(job.timeoutDeadline) * 1000).toISOString();
   const deadlineChanged = row.timeout_deadline !== newDeadlineIso && Number(job.timeoutDeadline) > 0;
 
-  if (expectedEscrowStatus === dbEscrowStatus && !disputedChanged && !deadlineChanged) {
+  // Payout can be set/changed any number of times while FUNDED, so unlike a
+  // status transition this has to be checked every pass, not just once.
+  let payoutChanged = false;
+  if (chainStatus === STATUS.FUNDED || chainStatus === STATUS.COMPLETED) {
+    const payout = await contract.getPayout(onchainId);
+    const chainRecipients = payout.recipients.map(a => a.toLowerCase());
+    let dbRecipients = [];
+    try { dbRecipients = (JSON.parse(row.payout_recipients || '[]')).map(a => String(a).toLowerCase()); } catch { /* ignore */ }
+    payoutChanged = JSON.stringify(chainRecipients) !== JSON.stringify(dbRecipients);
+    if (payoutChanged) {
+      await db.run(`
+        UPDATE jobs SET payout_recipients = ?, payout_shares = ?, updated_date = ? WHERE id = ?
+      `, JSON.stringify(payout.recipients), JSON.stringify(payout.shares.map(s => Number(s))), isoNow(), row.id);
+      console.log(`[indexer] reconcile: job ${row.id} payout ${dbRecipients.length ? 'changed' : 'assigned'} (${chainRecipients.length} recipient(s))`);
+    }
+  }
+
+  if (expectedEscrowStatus === dbEscrowStatus && !disputedChanged && !deadlineChanged && !payoutChanged) {
     return { changed: false };
   }
 
-  console.log(`[indexer] reconcile: job ${row.id} DB says "${dbEscrowStatus}", chain says "${expectedEscrowStatus}" — updating`);
+  if (expectedEscrowStatus !== dbEscrowStatus) {
+    console.log(`[indexer] reconcile: job ${row.id} DB says "${dbEscrowStatus}", chain says "${expectedEscrowStatus}" — updating`);
+  }
 
   if (chainStatus === STATUS.FUNDED && dbEscrowStatus === 'none') {
-    const payout = await contract.getPayout(onchainId);
     await db.run(`
       UPDATE jobs SET
         onchain_job_id = ?, escrow_funded = TRUE, escrow_status = 'funded',
-        funded_at = ?, payout_recipients = ?, payout_shares = ?,
-        escrow_disputed = ?, timeout_deadline = ?, updated_date = ?
+        funded_at = ?, escrow_disputed = ?, timeout_deadline = ?, updated_date = ?
       WHERE id = ?
     `, onchainId, new Date(Number(job.fundedAt) * 1000).toISOString(),
-       JSON.stringify(payout.recipients), JSON.stringify(payout.shares.map(s => Number(s))),
        Boolean(job.disputed), newDeadlineIso, isoNow(), row.id);
   } else if (chainStatus === STATUS.COMPLETED && dbEscrowStatus !== 'completed') {
     await db.run(`
