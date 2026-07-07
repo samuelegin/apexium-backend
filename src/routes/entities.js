@@ -63,7 +63,10 @@ const jobsCrud = buildEntityRouter('jobs', {
     }
   },
   beforeDelete: async (db, id, req, existing) => {
-    if (existing.status !== 'open') {
+    // Drafts (pre-funding) must be deletable too — the frontend's delete
+    // button is shown for both 'open' and 'draft' jobs, but this only ever
+    // allowed 'open', so every draft delete attempt 403'd silently.
+    if (existing.status !== 'open' && existing.status !== 'draft') {
       const err = new Error('Cannot delete a job that is in progress or completed');
       err.statusCode = 403;
       throw err;
