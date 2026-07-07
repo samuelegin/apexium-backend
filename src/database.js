@@ -65,7 +65,7 @@ function transaction(fn) {
     try {
       await client.query('BEGIN');
       const txProxy = makeTxProxy(client);
-      const result = await fn.call({ db: txProxy }, ...args);
+      const result = await fn(txProxy, ...args);
       await client.query('COMMIT');
       return result;
     } catch (err) {

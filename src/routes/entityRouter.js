@@ -98,7 +98,7 @@ function buildEntityRouter(table, hooks = {}) {
     const db = getDb();
     const items = Array.isArray(req.body) ? req.body : [req.body];
     const results = [];
-    const tx = db.transaction(async () => {
+    const tx = db.transaction(async (txDb) => {
       const now = new Date().toISOString();
       for (const item of items) {
         const id = uuidv4();
@@ -106,8 +106,8 @@ function buildEntityRouter(table, hooks = {}) {
         const hasUpdated = !NO_UPDATED_DATE.has(table);
         const data = { id, created_date: now, ...(hasUpdated ? { updated_date: now } : {}), ...raw };
         const cols = Object.keys(data);
-        await db.run(`INSERT INTO ${table} (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')})`, ...cols.map(c => data[c]));
-        const row = await db.get(`SELECT * FROM ${table} WHERE id = ?`, id);
+        await txDb.run(`INSERT INTO ${table} (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')})`, ...cols.map(c => data[c]));
+        const row = await txDb.get(`SELECT * FROM ${table} WHERE id = ?`, id);
         results.push(row);
       }
     });
